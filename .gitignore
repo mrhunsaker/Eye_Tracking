@@ -2,6 +2,7 @@
 shape_predictor_68_face_landmarks.dat
 *.mp4
 eye_tracking_data/
+
 logs/
 *.log
 *.json
