@@ -181,7 +181,7 @@ class IntegratedEyeTrackingSystem:
 
         # initialize camera
         self.cap = cv2.VideoCapture(0)
-        if not self.cap.isopened():
+        if not self.cap.isOpened():
             raise RuntimeError("could not open webcam")
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.screen_width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.screen_height)
@@ -271,14 +271,14 @@ class IntegratedEyeTrackingSystem:
             dtype=np.float64,
         )
         # solve for head rotation using pnp algorithm
-        success, rotation_vec, translation_vec = cv2.solvepnp(
+        success, rotation_vec, translation_vec = cv2.solvePnP(
             self.model_points, image_points, self.camera_matrix, self.dist_coeffs
         )
         # calculate head rotation angle from rotation vector
         if not success:
             return None
         # convert rotation vector to rotation matrix
-        rotation_mat, _ = cv2.rodrigues(rotation_vec)
+        rotation_mat, _ = cv2.Rodrigues(rotation_vec)
         # calculate euler angles from rotation matrix
         return np.degrees(np.arctan2(rotation_mat[1, 0], rotation_mat[0, 0]))
 
@@ -372,7 +372,7 @@ class IntegratedEyeTrackingSystem:
         if timestamp is None:
             timestamp = time.time()
         # convert frame to rgb format
-        frame_rgb = cv2.cvtcolor(frame, cv2.COLOR_BGR2RGB)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # process frame with mediapipe face mesh
         results = self.face_mesh.process(frame_rgb)
         # process face mesh results if available
@@ -686,7 +686,7 @@ class IntegratedEyeTrackingSystem:
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
         root.destroy()
-        cv2.namedWindow("calibration", cv2.window_normal)
+        cv2.namedWindow("calibration", cv2.WINDOW_NORMAL)
         cv2.moveWindow("calibration", 0, 0)
         cv2.resizeWindow("calibration", screen_width, screen_height)
 
