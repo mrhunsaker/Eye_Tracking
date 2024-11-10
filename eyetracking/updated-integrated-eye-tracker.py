@@ -372,7 +372,8 @@ class IntegratedEyeTrackingSystem:
         if timestamp is None:
             timestamp = time.time()
         # convert frame to rgb format
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_flipped = cv2.flip(frame, 1)
+        frame_rgb = cv2.cvtColor(frame_flipped, cv2.COLOR_BGR2RGB)
         # process frame with mediapipe face mesh
         results = self.face_mesh.process(frame_rgb)
         # process face mesh results if available
@@ -516,7 +517,7 @@ class IntegratedEyeTrackingSystem:
         """
         # Set up the plot with black background
         plt.style.use("dark_background")
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(8, 8))
         fig.patch.set_facecolor("black")
         ax.set_facecolor("black")
 
@@ -542,8 +543,8 @@ class IntegratedEyeTrackingSystem:
         )
 
         # Customize plot appearance
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
+        ax.set_xlim(min(x_coords), max(x_coords))
+        ax.set_ylim(min(y_coords), max(y_coords))
         ax.set_xlabel("Horizontal Position (Normalized)", color="white")
         ax.set_ylabel("Vertical Position (Normalized)", color="white")
         ax.set_title(f"Gaze Trajectory - Trial {trial_id}", color="white", pad=20)
@@ -555,7 +556,7 @@ class IntegratedEyeTrackingSystem:
         plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color="white")
 
         # Add grid for better readability
-        ax.grid(True, linestyle="--", alpha=0.3)
+        ax.grid(False)
 
         # Adjust tick colors
         ax.tick_params(axis="x", colors="white")
@@ -678,57 +679,59 @@ class IntegratedEyeTrackingSystem:
 
     def calibrate(self, screen_points):
         """
-        perform gaze calibration using known screen points.
+        Perform gaze calibration using known screen points.
         """
         self.calibration_data = []
-        # create a window and set it to full screen
+
+        # Create a window and set it to full screen
         root = tk.Tk()
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
         root.destroy()
+
         cv2.namedWindow("calibration", cv2.WINDOW_NORMAL)
         cv2.moveWindow("calibration", 0, 0)
         cv2.resizeWindow("calibration", screen_width, screen_height)
 
-        # calibration phase
-        print("calibration phase: look at each yellow dot")
+        print("Calibration phase: Look at each yellow dot")
         for point in screen_points:
             point_data = []
             start_time = time.time()
 
-            while time.time() - start_time < 5:  # increased to 5 seconds per point
-                # create a fresh frame for each update
+            while time.time() - start_time < 5:
+                # Create a fresh frame for each update
                 calibration_frame = np.zeros(
                     (self.screen_height, self.screen_width, 3), dtype=np.uint8
                 )
 
-                # draw the target point (yellow circle)
+                # Draw the target point (yellow circle)
+                # Flip x-coordinate for display
                 point_px = (
-                    int(point[0] * self.screen_width),
+                    int((1 - point[0]) * self.screen_width),
                     int(point[1] * self.screen_height),
                 )
                 cv2.circle(calibration_frame, point_px, 50, (0, 255, 255), -1)
 
-                # get and draw the current gaze point
+                # Get and process the current frame
                 ret, frame = self.cap.read()
                 if not ret:
                     continue
 
                 gaze_point = self.process_frame(frame)
                 if gaze_point is not None:
-                    # draw the current gaze point (green circle)
+                    # Draw the current gaze point (green circle)
                     gaze_px = (
                         int(gaze_point[0] * self.screen_width),
                         int(gaze_point[1] * self.screen_height),
                     )
                     cv2.circle(calibration_frame, gaze_px, 10, (0, 255, 0), -1)
 
-                    # draw a line between target and gaze point
+                    # Draw a line between target and gaze point
                     cv2.line(calibration_frame, point_px, gaze_px, (255, 255, 255), 1)
 
                     point_data.append(gaze_point)
 
-                # show the frame with both points
+                # Show the frame with both points
                 cv2.imshow("calibration", calibration_frame)
 
                 if cv2.waitKey(1) & 0xFF == 27:
