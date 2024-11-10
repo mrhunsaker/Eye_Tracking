@@ -1,0 +1,200 @@
+[tool.poetry]
+name = "eyetracking"
+version = "2024.11.03-alpha"
+description = "Eye Tracking Program for use with Vision Impaired Students"
+authors = ["Michael Ryan Hunsaker, M.Ed., Ph.D. <ryhunsaker@dsdmail.net>"]
+license = "Apache 2.0"
+readme = "README.md"
+packages = [{ include = "eyetracking" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+logging = "^0.4.9"
+pathlib = "^1.0"
+datetime = "^5.2"
+mediapipe = "^0.10.18"
+pandas = "^2.2.3"
+dlib = "^19.24.6"
+matplotlib = "^3.9.2"
+numpy = "<2.0.0"
+ml-dtypes = "^0.5.0"
+pycparser = "^2.22"
+scipy = "^1.14.1"
+six = "^1.16.0"
+cffi = "^1.17.1"
+contourpy = "^1.3.0"
+cycler = "^0.12.1"
+fonttools = "^4.54.1"
+jaxlib = "^0.4.35"
+kiwisolver = "^1.4.7"
+opt-einsum = "^3.4.0"
+pillow = "^11.0.0"
+pyparsing = "^3.2.0"
+python-dateutil = "^2.9.0.post0"
+absl-py = "^2.1.0"
+attrs = "^24.2.0"
+flatbuffers = "^24.3.25"
+jax = "^0.4.35"
+protobuf = "^4.25.5"
+sentencepiece = "^0.2.0"
+sounddevice = "^0.5.1"
+tzdata = "^2024.2"
+opencv-contrib-python = "^4.10.0.84"
+requests = "^2.32.3"
+screeninfo = "^0.8.1"
+argparse = "^1.4.0"
+scikit-learn = "^1.5.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pylint = "^3.0.2"
+black = "^23.10.1"
+ruff = "^0.1.3"
+
+[[tool.poetry.source]]
+name = "eyetracking"
+url = "https://github.com/mrhunsaker/eyetracking"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+[tool.black]
+line-length = 88
+target-version = ['py37', 'py38', 'py39', 'py310', 'py311', 'py312']
+include = '\pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.tox
+    \.venv
+)/
+'''
+preview = true
+skip_magic_trailing_comma = true
+
+[tool.pyanalyze]
+missing_parameter_annotation = true
+missing_return_annotation = true
+incompatible_override = true
+
+[tool.pylint.'MESSAGES CONTROL']
+max-line-length = 88
+disable = '''
+    C0103,
+    C0114,
+    C0115,
+    C0116,
+    R0903,
+    R0913,
+    W0105,
+    R0915,
+    W0109,
+    W0108,
+    C0301,
+    C0413,
+    E0401,
+    W0621,
+    R1734,
+    R0914,
+    R0912,
+    C0302,
+    W0612,
+    W0613,
+    R0801,
+    R1735
+    '''
+good-names = ["c", "e", "i", "conn"]
+
+[tool.ruff]
+exclude = [
+	".bzr",
+	".direnv",
+	".eggs",
+	".git",
+	".git-rewrite",
+	".hg",
+	".mypy_cache",
+	".nox",
+	".pants.d",
+	".pytype",
+	".ruff_cache",
+	".svn",
+	".tox",
+	".venv",
+	"__pypackages__",
+	"_build",
+	"buck-out",
+	"build",
+	"dist",
+	"node_modules",
+	"venv",
+]
+line-length = 88
+include = ["*.py"]
+preview = true
+respect-gitignore = false
+target-version = "py310"
+select = ["D"]
+ignore = ["D417"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = []
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "native"
+skip-magic-trailing-comma = false
+
+[tool.ruff.isort]
+case-sensitive = true
+combine-as-imports = true
+force-single-line = true
+force-sort-within-sections = true
+force-wrap-aliases = true
+lines-after-imports = 2
+lines-between-types = 1
+order-by-type = true
+relative-imports-order = "closest-to-furthest"
+
+[tool.ruff.pycodestyle]
+max-line-length = 120
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.ruff.pylint]
+max-branches = 25
+max-public-methods = 25
+
+[tool.ruff.flake8-copyright]
+author = "Michael Ryan Hunsaker, M.Ed., Ph.D."
+
+[tool.ruff.flake8-import-conventions]
+[tool.ruff.flake8-import-conventions.aliases]
+altair = "alt"
+"matplotlib.pyplot" = "plt"
+numpy = "np"
+pandas = "pd"
+seaborn = "sns"
+scipy = "sp"
+"plotly.graph_objects" = "go"
+tkinter = "tk"
+"plotly.express" = "px"
+polars = "pl"
+pyarrow = "pa"
+tensorflow = "tf"
+
+[tool.ruff.flake8-quotes]
+avoid-escape = true
+docstring-quotes = "double"
+inline-quotes = "single"
+multiline-quotes = "double"
