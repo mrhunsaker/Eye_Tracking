@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding: utf-8
 """
 copyright (c) 2024  michael ryan hunsaker, m.ed., ph.d.
 licensed under the apache license, version 2.0 (the "license");
@@ -14,71 +15,103 @@ see the license for the specific language governing permissions and
 limitations under the license.
 """
 
-import cv2
-import numpy as np
-import mediapipe as mp
-import dlib
-import time
+# import the necessary packages
+import argparse
+import bz2
+import datetime
 import json
 import logging
-import datetime
-import bz2
 import os
 from pathlib import Path
-from scipy.ndimage import gaussian_filter
-from scipy.spatial import distance
-from sklearn.svm import SVR
-from scipy.signal import savgol_filter
+import time
+import tkinter as tk
+
+import cv2
+import dlib
 import matplotlib.pyplot as plt
-from collections import defaultdict
+import mediapipe as mp
+import numpy as np
 import requests
 from screeninfo import get_monitors
-import argparse
-import tkinter as tk
+from sklearn.svm import SVR
 
 
 def download_landmarks_model(
-    model_path="./eyetracking/shape_predictor_68_face_landmarks.dat",
+    model_choice,
+    model_path_5="./eyetracking/shape_predictor_5_face_landmarks.dat",
+    model_path_68="./eyetracking/shape_predictor_68_face_landmarks.dat",
 ):
     """
-    download and extract the facial landmarks model file.
+    Downloads and extracts the facial landmarks model file from dlib.net based on the model_choice argument.
+
+    Args:
+        model_choice (str): "5" or "68" indicating the desired number of facial landmarks.
+        model_path_5 (str, optional): Path to the 5-point model file. Defaults to "./eyetracking/shape_predictor_5_face_landmarks.dat".
+        model_path_68 (str, optional): Path to the 68-point model file. Defaults to "./eyetracking/shape_predictor_68_face_landmarks.dat".
+
+    Returns:
+        str: Path to the downloaded model file if successful, None otherwise.
     """
     try:
-        if Path(model_path).exists():
-            print(f"model file already exists at {model_path}")
-            return True
+        # Ensure model_choice is a string and strip any path information
+        model_choice = str(model_choice).strip()
+        if not model_choice in ["5", "68"]:
+            raise ValueError(
+                f"Invalid model choice: {model_choice}. Must be '5' or '68'"
+            )
 
-        url = "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2"
-        compressed_path = f"{model_path}.bz2"
+        # Determine which model to download based on choice
+        if model_choice == "5":
+            download_path = model_path_5
+            url = "http://dlib.net/files/shape_predictor_5_face_landmarks.dat.bz2"
+        else:  # model_choice == "68"
+            download_path = model_path_68
+            url = "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2"
 
-        print("downloading facial landmarks model...")
-        print("this may take a few minutes depending on your internet connection.")
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(download_path), exist_ok=True)
 
+        # Check if the model file already exists
+        if Path(download_path).exists():
+            print(f"Model file already exists at {download_path}")
+            return download_path
+
+        # Download the model file
+        compressed_path = f"{download_path}.bz2"
+
+        print("Downloading facial landmarks model...")
+        print("This may take a few minutes depending on your internet connection.")
+
+        # Download the file using requests
         response = requests.get(url, stream=True)
         total_size = int(response.headers.get("content-length", 0))
         block_size = 1024
 
         with open(compressed_path, "wb") as f:
+            # Iterate over the response content and write it to the file
             for data in response.iter_content(block_size):
                 f.write(data)
                 downloaded = f.tell()
                 done = int(50 * downloaded / total_size)
                 print(
-                    f"\rdownloading: [{'=' * done}{' ' * (50 - done)}] {downloaded}/{total_size} bytes",
+                    f"\rDownloading: [{'=' * done}{' ' * (50 - done)}] {downloaded}/{total_size} bytes",
                     end="",
                     flush=True,
                 )
 
-        print("\nextracting model file...")
-        with bz2.open(compressed_path) as fr, open(model_path, "wb") as fw:
+        print("\nExtracting model file...")
+        # Extract the model file using bz2.open()
+        with bz2.open(compressed_path) as fr, open(download_path, "wb") as fw:
             fw.write(fr.read())
+
+        # Remove the compressed file once the model file is extracted
         os.remove(compressed_path)
-        print("download and extraction complete!")
-        return True
+        print("Download and extraction complete!")
+        return download_path
 
     except Exception as e:
-        print(f"error downloading model: {str(e)}")
-        return False
+        print(f"Error downloading model: {str(e)}")
+        return None
 
 
 class IntegratedEyeTrackingSystem:
@@ -90,11 +123,18 @@ class IntegratedEyeTrackingSystem:
         self,
         student_initials,
         base_dir="eye_tracking_data",
-        dwell_threshold=1.0,
-        dwell_radius_deg=2.0,
-        model_path="./eyetracking/shape_predictor_68_face_landmarks.dat",
+        dwell_threshold=0.5,
+        dwell_radius_deg=1.5,
+        model_choice="68",
         calibration_points=9,
     ):
+        if model_choice == "5":
+            self.model_path = "./eyetracking/shape_predictor_5_face_landmarks.dat"
+        elif model_choice == "68":
+            self.model_path = "./eyetracking/shape_predictor_68_face_landmarks.dat"
+        else:
+            raise ValueError(f"Invalid model choice: {args.model}")
+
         # get primary monitor dimensions
         monitor = get_monitors()[0]
         self.screen_width = monitor.width
@@ -117,15 +157,15 @@ class IntegratedEyeTrackingSystem:
         self.logger = logging.getLogger(__name__)
 
         # initialize face detection and tracking
-        if not Path(model_path).exists():
+        if not Path(self.model_path).exists():
             self.logger.info(
                 "facial landmarks model not found. attempting to download..."
             )
-            if not download_landmarks_model(model_path):
+            if not download_landmarks_model(self.model_path):
                 raise RuntimeError("failed to download facial landmarks model")
 
         self.detector = dlib.get_frontal_face_detector()
-        self.predictor = dlib.shape_predictor(model_path)
+        self.predictor = dlib.shape_predictor(self.model_path)
         self.mp_face_mesh = mp.solutions.face_mesh
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=1,
@@ -425,9 +465,9 @@ class IntegratedEyeTrackingSystem:
         """
         # calculate which 0.5s bin this timestamp belongs to
         elapsed_time = timestamp - self.trial_start_time
-        current_bin = int(elapsed_time * 2)  # multiply by 2 to get 0.5s bins
+        current_bin = int(elapsed_time * 8)  # multiply by 2 to get 0.5s bins
         bin_timestamp = self.trial_start_time + (
-            current_bin * 0.5
+            current_bin * 0.125
         )  # get exact bin timestamp
 
         # initialize the bin if it doesn't exist
@@ -517,7 +557,7 @@ class IntegratedEyeTrackingSystem:
         """
         # Set up the plot with black background
         plt.style.use("dark_background")
-        fig, ax = plt.subplots(figsize=(8, 8))
+        fig, ax = plt.subplots(figsize=(10.5, 8))
         fig.patch.set_facecolor("black")
         ax.set_facecolor("black")
 
@@ -538,15 +578,20 @@ class IntegratedEyeTrackingSystem:
             y_coords,
             s=25,  # 0.25 cm dots (approximately)
             c=timestamps,  # Color by timestamp for temporal information
-            cmap="Oranges",  # Use orange colormap
-            alpha=0.7,
+            cmap="viridis",  # Use blue-to-yellow colormap
         )
 
         # Customize plot appearance
         ax.set_xlim(min(x_coords), max(x_coords))
         ax.set_ylim(min(y_coords), max(y_coords))
-        ax.set_xlabel("Horizontal Position (Normalized)", color="white")
-        ax.set_ylabel("Vertical Position (Normalized)", color="white")
+        ax.set_xticks([min(x_coords), max(x_coords)])
+        ax.set_yticks([min(y_coords), max(y_coords)])
+
+        ax.set_xticklabels(["left", "right"])
+        ax.set_yticklabels(["bottom", "top"])
+
+        ax.set_xlabel("Horizontal Position", color="white")
+        ax.set_ylabel("Vertical Position", color="white")
         ax.set_title(f"Gaze Trajectory - Trial {trial_id}", color="white", pad=20)
 
         # Add colorbar to show temporal progression
@@ -638,7 +683,7 @@ class IntegratedEyeTrackingSystem:
             "trial_id": trial_id,
             "trial_start": self.trial_start_time,
             "trial_end": time.time(),
-            "bin_size_seconds": 0.5,
+            "bin_size_seconds": 0.125,
             "trajectory_bins": {
                 str(bin_num): {
                     "bin_timestamp": bin_data["bin_timestamp"],
@@ -727,8 +772,7 @@ class IntegratedEyeTrackingSystem:
                     cv2.circle(calibration_frame, gaze_px, 10, (0, 255, 0), -1)
 
                     # Draw a line between target and gaze point
-                    cv2.line(calibration_frame, point_px, gaze_px, (255, 255, 255), 1)
-
+                    cv2.line(calibration_frame, point_px, gaze_px, (255, 0, 0), 1)
                     point_data.append(gaze_point)
 
                 # Show the frame with both points
@@ -823,22 +867,25 @@ class IntegratedEyeTrackingSystem:
 
     def run_session(self, duration, show_tracking=False):
         """
-        run a complete eye tracking session.
+        Run a gaze tracking session for a specified duration.
+        :param duration: duration of the session in seconds
+        :param show_tracking: whether to display the gaze tracking window with the lanmark fit shown in real-time
+
         """
         self.session_duration = duration
         self.session_start_time = time.time()
         self.session_active = True
-
+        # Open a new window to display the tracking
         if show_tracking:
             cv2.namedWindow("tracking", cv2.WINDOW_NORMAL)
-
+        # Start the webcam capture
         while self.session_active:
             ret, frame = self.cap.read()
             if not ret:
                 continue
-
+            # Process the current frame
             gaze_point = self.process_frame(frame)
-
+            # Display the gaze point on the frame
             if gaze_point is not None:
                 if show_tracking:
                     display_frame = frame.copy()
@@ -853,20 +900,26 @@ class IntegratedEyeTrackingSystem:
                         -1,
                     )
                     cv2.imshow("tracking", display_frame)
-
+            # Check if the session is complete
             if cv2.waitKey(1) & 0xFF == 27 or self.is_session_complete():
                 break
-
+        # Close the tracking window
         if show_tracking:
             cv2.destroyWindow("tracking")
-
+        # Save the trial data
         self.save_trial_data()
+        # End the session
         self.session_active = False
 
+    # Save the trial data
     def is_session_complete(self):
-        """check if the current session has exceeded its duration."""
+        """
+        check if the current session has exceeded its duration.
+        :return: True if the session is complete, False otherwise
+        """
         if not self.session_active:
             return False
+        # Check if the session duration has elapsed
         return time.time() - self.session_start_time >= self.session_duration
 
 
@@ -874,10 +927,17 @@ def main():
     """
     Main function to run the integrated eye tracking system.
     """
+    # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Integrated Eye Tracking System")
+    # Added an argument to specify the student initials
     parser.add_argument(
-        "student_initials", type=str, help="Student initials (e.g., JD for John Doe)"
+        "-s",
+        "--student-initials",
+        type=str,
+        default="TEST",
+        help="Student initials (e.g., JoDo for John Doe; default: TEST)",
     )
+    # Added an argument to specify the trial duration
     parser.add_argument(
         "-t",
         "--trial-duration",
@@ -885,30 +945,51 @@ def main():
         default=5,
         help="Trial duration in minutes (default: 5)",
     )
+    """
+    # Added an argument to specify the model path
     parser.add_argument(
-        "--model-path",  # Changed from model_Path to model_path
+        "-m",
+        "--model-path",
         type=str,
         default="./eyetracking/shape_predictor_68_face_landmarks.dat",
-        help="Path to facial landmarks model file",
+        help="Path to facial landmarks model file 9default: ./eyetracking/shape_predictor_68_face_landmarks.dat)",
     )
+    """
+    # Added an argument to specify the facial landmark model
+    # This takes the place of the above --model-path argument
     parser.add_argument(
-        "--hide-tracking", action="store_true", help="Hide the tracking window"
+        "-m",
+        "--model",
+        choices=["5", "68"],
+        default="68",
+        help="facial landmark model: 5 points (faster) or 68 points (more accurate)",
     )
-    args = parser.parse_args()
 
+    # Added an argument to hide the tracking window
+    parser.add_argument(
+        # "-h",
+        "--hide-tracking",
+        action="store_true",
+        help="Hide the tracking window (default: show tracking)",
+    )
+    # Parse the arguments
+    args = parser.parse_args()
+    # Validate student initials
     if not 2 <= len(args.student_initials) <= 4 or not args.student_initials.isalpha():
         raise ValueError("Student initials must be 2-4 letters")
-
+    # Initialize the eye tracking system
     try:
+        # Create an instance of the IntegratedEyeTrackingSystem class
         tracker = IntegratedEyeTrackingSystem(
             args.student_initials,
-            model_path=args.model_path,  # Changed from model_Path to model_path
+            model_choice=args.model,
         )
 
         # Generate calibration points (3x3 grid)
         calibration_points = [(x, y) for x in [0.1, 0.5, 0.9] for y in [0.1, 0.5, 0.9]]
-
+        # Run the calibration sequence
         print("Starting calibration sequence...")
+        # Check if calibration was successful
         if tracker.calibrate(calibration_points):
             print(f"\nStarting tracking session for {args.trial_duration} minutes...")
             tracker.run_session(
@@ -916,15 +997,19 @@ def main():
             )
         else:
             print("Calibration failed or was interrupted. Exiting...")
-
+    # Handle exceptions
     except Exception as e:
+        # Print the error message
         print(f"Error: {str(e)}")
     finally:
         # Check if tracker exists before accessing its attributes
         if "tracker" in locals() and hasattr(tracker, "cap"):
+            # Release the webcam capture
             tracker.cap.release()
-        cv2.destroyAllWindows()  # Fixed capitalization
+        # Close all OpenCV windows
+        cv2.destroyAllWindows()
 
 
+# Run the main function
 if __name__ == "__main__":
     main()
