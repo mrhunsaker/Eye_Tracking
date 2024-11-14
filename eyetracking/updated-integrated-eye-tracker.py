@@ -57,7 +57,7 @@ def download_landmarks_model(
         model_choice = str(model_choice).strip()
         if not model_choice in ["5", "68"]:
             raise ValueError(
-                f"Invalid model choice: {model_choice}. Must be '5' or '68'"
+                f"Invalid model choice: {model_choice}. Must be '5' or '68' (No quotation marks)"
             )
 
         # Determine which model to download based on choice
@@ -643,6 +643,7 @@ class IntegratedEyeTrackingSystem:
 
         self.logger.info(f"Saving trial data for trial_id: {trial_id}")
 
+        """  commenting out heatmap until I fix the code
         # Enhanced heatmap visualization
         # Normalize heatmap with increased sensitivity
         normalized_heatmap = self.heatmap.copy()
@@ -674,7 +675,7 @@ class IntegratedEyeTrackingSystem:
         # Save heatmap image
         heatmap_path = self.student_dir / "heatmaps" / f"heatmap_{trial_id}.png"
         cv2.imwrite(str(heatmap_path), heatmap_blend)
-
+        """
         # Save trajectory data
         trajectory_path = (
             self.student_dir / "trajectories" / f"trajectory_{trial_id}.json"
@@ -715,12 +716,62 @@ class IntegratedEyeTrackingSystem:
 
         self.logger.info(f"Successfully saved all trial data for trial_id: {trial_id}")
 
+        # Generate dwell time plot
+        dwell_plot_path = self.student_dir / "dwell_times" / f"dwell_{trial_id}.png"
+        dwell_data = self.dwell_events  # assuming 'dwell_events' holds dwell data
+
+        # Create the plot
+        plt.figure(figsize=(8, 6))  # adjust figure size as needed
+
+        # Plot points with size based on n_points and color based on duration
+        for event in dwell_data:
+            size = np.sqrt(event["n_points"]) * 5  # adjust scaling factor as needed
+            color = self._map_duration_to_color(
+                event["duration"]
+            )  # define color mapping function
+            plt.plot(
+                event["mean_x"],
+                event["mean_y"],
+                marker="o",
+                markersize=size,
+                linestyle="",
+                color=color,
+            )
+        mean_x = []
+        mean_y = []
+        if event in dwell_data:
+            if "mean_x" in event and "mean_y" in event:
+                mean_x.append(event["mean_x"])
+                mean_y.append(event["mean_y"])
+            # Customize plot (optional)
+            plt.xlabel("X-coordinate (Normalized)")
+            plt.ylabel("Y-coordinate (Normalized)")
+            plt.title("Dwell Time Plot")
+            plt.xlim(min(mean_x), max(mean_x))
+            plt.ylim(min(mean_y), max(mean_y))
+            plt.xticks([min(mean_x), max(mean_x)], ["LEFT", "RIGHT"])
+            plt.yticks([min(mean_y), max(mean_y)], ["BOTTOM", "TOP"])
+            plt.savefig(dwell_plot_path)
+            plt.close()  # avoid figure stacking
+        else:
+            print(f"Error: Missing 'mean_x' or 'mean_y' in event: {event}")
+
         return {
-            "heatmap": str(heatmap_path),
+            # "heatmap": str(heatmap_path),
             "trajectory": str(trajectory_path),
             "trajectory_plot": trajectory_plot_path,
             "dwell": str(dwell_path),
         }
+
+    # Helper function to map dwell duration to color
+    def _map_duration_to_color(self, duration):
+        # Define colormap and normalization
+        cmap = plt.cm.viridis
+        # Adjust vmin and vmax as needed
+        norm = plt.Normalize(vmin=0, vmax=self.dwell_threshold)
+        # Map duration to color
+        color = cmap(norm(duration))
+        return color
 
     def calibrate(self, screen_points):
         """
@@ -922,6 +973,54 @@ class IntegratedEyeTrackingSystem:
         # Check if the session duration has elapsed
         return time.time() - self.session_start_time >= self.session_duration
 
+    def preview_camera(self):
+        """
+        Open a preview window to ensure the student is properly positioned
+        before starting calibration. Press spacebar to continue or ESC to exit.
+        """
+        print(
+            "Position yourself in front of the camera and press SPACEBAR when ready. Press ESC to exit."
+        )
+
+        cv2.namedWindow("Camera Preview", cv2.WINDOW_NORMAL)
+        cv2.moveWindow("Camera Preview", 0, 0)
+        cv2.resizeWindow("Camera Preview", self.screen_width, self.screen_height)
+
+        while True:
+            ret, frame = self.cap.read()
+            if not ret:
+                print("Failed to grab frame from camera")
+                return False
+
+            # Process frame to show face landmarks
+            gaze_point = self.process_frame(frame)
+
+            # Create a copy of the frame to draw on
+            preview_frame = frame.copy()
+
+            # Add instruction text
+            cv2.putText(
+                preview_frame,
+                "Press SPACEBAR when ready, ESC to exit",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2,
+            )
+
+            # Show the processed frame
+            cv2.imshow("Camera Preview", preview_frame)
+
+            # Check for key presses
+            key = cv2.waitKey(1) & 0xFF
+            if key == 32:  # Spacebar
+                cv2.destroyWindow("Camera Preview")
+                return True
+            elif key == 27:  # ESC
+                cv2.destroyWindow("Camera Preview")
+                return False
+
 
 def main():
     """
@@ -929,7 +1028,6 @@ def main():
     """
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Integrated Eye Tracking System")
-    # Added an argument to specify the student initials
     parser.add_argument(
         "-s",
         "--student-initials",
@@ -937,7 +1035,6 @@ def main():
         default="TEST",
         help="Student initials (e.g., JoDo for John Doe; default: TEST)",
     )
-    # Added an argument to specify the trial duration
     parser.add_argument(
         "-t",
         "--trial-duration",
@@ -945,18 +1042,6 @@ def main():
         default=5,
         help="Trial duration in minutes (default: 5)",
     )
-    """
-    # Added an argument to specify the model path
-    parser.add_argument(
-        "-m",
-        "--model-path",
-        type=str,
-        default="./eyetracking/shape_predictor_68_face_landmarks.dat",
-        help="Path to facial landmarks model file 9default: ./eyetracking/shape_predictor_68_face_landmarks.dat)",
-    )
-    """
-    # Added an argument to specify the facial landmark model
-    # This takes the place of the above --model-path argument
     parser.add_argument(
         "-m",
         "--model",
@@ -964,32 +1049,34 @@ def main():
         default="68",
         help="facial landmark model: 5 points (faster) or 68 points (more accurate)",
     )
-
-    # Added an argument to hide the tracking window
     parser.add_argument(
-        # "-h",
+        "-ht",
         "--hide-tracking",
         action="store_true",
         help="Hide the tracking window (default: show tracking)",
     )
-    # Parse the arguments
+
     args = parser.parse_args()
-    # Validate student initials
+
     if not 2 <= len(args.student_initials) <= 4 or not args.student_initials.isalpha():
         raise ValueError("Student initials must be 2-4 letters")
-    # Initialize the eye tracking system
+
     try:
-        # Create an instance of the IntegratedEyeTrackingSystem class
         tracker = IntegratedEyeTrackingSystem(
             args.student_initials,
             model_choice=args.model,
         )
 
+        # Add preview phase
+        print("\nStarting camera preview...")
+        if not tracker.preview_camera():
+            print("Preview cancelled or interrupted. Exiting...")
+            return
+
         # Generate calibration points (3x3 grid)
         calibration_points = [(x, y) for x in [0.1, 0.5, 0.9] for y in [0.1, 0.5, 0.9]]
-        # Run the calibration sequence
-        print("Starting calibration sequence...")
-        # Check if calibration was successful
+
+        print("\nStarting calibration sequence...")
         if tracker.calibrate(calibration_points):
             print(f"\nStarting tracking session for {args.trial_duration} minutes...")
             tracker.run_session(
@@ -997,19 +1084,14 @@ def main():
             )
         else:
             print("Calibration failed or was interrupted. Exiting...")
-    # Handle exceptions
+
     except Exception as e:
-        # Print the error message
         print(f"Error: {str(e)}")
     finally:
-        # Check if tracker exists before accessing its attributes
         if "tracker" in locals() and hasattr(tracker, "cap"):
-            # Release the webcam capture
             tracker.cap.release()
-        # Close all OpenCV windows
         cv2.destroyAllWindows()
 
 
-# Run the main function
 if __name__ == "__main__":
     main()
