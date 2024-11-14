@@ -29,6 +29,7 @@ import tkinter as tk
 import cv2
 import dlib
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import mediapipe as mp
 import numpy as np
 import requests
@@ -643,7 +644,9 @@ class IntegratedEyeTrackingSystem:
 
         self.logger.info(f"Saving trial data for trial_id: {trial_id}")
 
-        """  commenting out heatmap until I fix the code
+        """
+        commenting out heatmap until I fix the code
+
         # Enhanced heatmap visualization
         # Normalize heatmap with increased sensitivity
         normalized_heatmap = self.heatmap.copy()
@@ -676,6 +679,7 @@ class IntegratedEyeTrackingSystem:
         heatmap_path = self.student_dir / "heatmaps" / f"heatmap_{trial_id}.png"
         cv2.imwrite(str(heatmap_path), heatmap_blend)
         """
+
         # Save trajectory data
         trajectory_path = (
             self.student_dir / "trajectories" / f"trajectory_{trial_id}.json"
@@ -715,7 +719,7 @@ class IntegratedEyeTrackingSystem:
             json.dump(dwell_data, f, indent=2)
 
         self.logger.info(f"Successfully saved all trial data for trial_id: {trial_id}")
-
+        """
         # Generate dwell time plot
         dwell_plot_path = self.student_dir / "dwell_times" / f"dwell_{trial_id}.png"
         dwell_data = self.dwell_events  # assuming 'dwell_events' holds dwell data
@@ -753,24 +757,162 @@ class IntegratedEyeTrackingSystem:
             plt.yticks([min(mean_y), max(mean_y)], ["BOTTOM", "TOP"])
             plt.savefig(dwell_plot_path)
             plt.close()  # avoid figure stacking
+
         else:
             print(f"Error: Missing 'mean_x' or 'mean_y' in event: {event}")
+        """
+        dwell_plot_path = self.student_dir / "dwell_times" / f"dwell_{trial_id}.png"
+        self.plot_dwell_time(trial_id, dwell_data)
+
+        head_angle_path = (
+            self.student_dir / "head_angles" / f"head_angle_{trial_id}.json"
+        )
+        head_angle_data = self.calculate_and_save_head_angle(trial_id, dwell_data)
+
+        # Generate head angle polar plot
+        head_angle_plot_path = (
+            self.student_dir / "head_angles" / f"head_angle_{trial_id}.png"
+        )
+        self.plot_head_angle(trial_id, head_angle_data)
 
         return {
             # "heatmap": str(heatmap_path),
             "trajectory": str(trajectory_path),
             "trajectory_plot": trajectory_plot_path,
             "dwell": str(dwell_path),
+            "head_angle": str(head_angle_path),
+            "head_angle_plot": head_angle_plot_path,
         }
 
-    # Helper function to map dwell duration to color
+    def calculate_and_save_head_angle(self, trial_id, dwell_data):
+        """
+        Calculate the head angle from the eye marker positions and save the data to a JSON file.
+
+        Parameters:
+        trial_id (str): The unique identifier for the trial.
+        dwell_data (dict): The dwell time data.
+
+        Returns:
+        dict: The head angle data.
+        """
+        head_angle_path = (
+            self.student_dir / "head_angles" / f"head_angle_{trial_id}.json"
+        )
+        head_angle_data = {"trial_id": trial_id, "head_angles": []}
+
+        for event in dwell_data["events"]:
+            left_eye_x = event["left_eye_x"]
+            left_eye_y = event["left_eye_y"]
+            right_eye_x = event["right_eye_x"]
+            right_eye_y = event["right_eye_y"]
+
+            # Calculate the angle between the line connecting the eyes and the horizontal
+            slope = (right_eye_y - left_eye_y) / (right_eye_x - left_eye_x)
+            angle = math.degrees(math.atan(slope))
+
+            head_angle_data["head_angles"].append({
+                "timestamp": event["bin_timestamp"],
+                "angle": angle,
+            })
+
+        with open(head_angle_path, "w") as f:
+            json.dump(head_angle_data, f, indent=2)
+
+        return head_angle_data
+
+    def plot_head_angle(self, trial_id, head_angle_data):
+        """
+        Generate and save a polar plot of the head angle over time.
+
+        Parameters:
+        trial_id (str): The unique identifier for the trial.
+        head_angle_data (dict): The head angle data.
+        """
+        head_angle_plot_path = (
+            self.student_dir / "head_angles" / f"head_angle_{trial_id}.png"
+        )
+
+        angles = [data["angle"] for data in head_angle_data["head_angles"]]
+        timestamps = [data["timestamp"] for data in head_angle_data["head_angles"]]
+
+        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection="polar"))
+        ax.plot(np.radians(angles), timestamps)
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        ax.set_title(f"Head Angle Over Time - Trial {trial_id}")
+        ax.set_rmin(min(timestamps))
+        ax.set_rmax(max(timestamps))
+        ax.set_rlabel_position(-22.5)
+        ax.set_rticks([min(timestamps), max(timestamps)])
+        ax.set_rticklabels([min(timestamps), max(timestamps)], rotation=90)
+        ax.set_thetagrids(np.arange(0, 360, 45))
+
+        plt.savefig(head_angle_plot_path)
+        plt.close()
+
+    def plot_dwell_time(self, trial_id, dwell_data):
+        """
+        Generate and save a dwell time plot.
+
+        Parameters:
+        trial_id (str): The unique identifier for the trial.
+        dwell_data (dict): The dwell time data.
+        """
+        dwell_plot_path = self.student_dir / "dwell_times" / f"dwell_{trial_id}.png"
+
+        fig, ax = plt.figure(figsize=(10.5, 8))
+        mean_x_values = [event["mean_x"] for event in dwell_data["events"]]
+        mean_y_values = [event["mean_y"] for event in dwell_data["events"]]
+        # Plot points with size fixed at 1 cm and color based on duration
+        for event in dwell_data["events"]:
+            size = 1  # 1 cm point size
+            color = self._map_duration_to_color(event["duration"])
+            plt.plot(
+                event["mean_x"],
+                event["mean_y"],
+                marker="o",
+                markersize=size,
+                linestyle="",
+                color=color,
+            )
+
+        # Customize plot
+        plt.xlabel("X-coordinate (Normalized)")
+        plt.ylabel("Y-coordinate (Normalized)")
+        plt.title("Dwell Time Plot")
+        ax.set_xlim(min(mean_x_values), max(mean_x_values))
+        ax.set_ylim(min(mean_y_values), max(mean_y_values))
+        ax.set_xticks([min(mean_x_values), max(mean_x_values)])
+        ax.set_xticklabels(["LEFT", "RIGHT"])
+        ax.set_yticks([min(mean_y_values), max(mean_y_values)])
+        ax.set_yticklabels(["BOTTOM", "TOP"])
+
+        # Add the colorbar to the existing axes
+        cbar = fig.colorbar(
+            plt.cm.ScalarMappable(
+                norm=colors.Normalize(vmin=0, vmax=self.dwell_threshold), cmap="viridis"
+            ),
+            ax=ax,
+            label="Dwell Time (seconds)",
+        )
+
+        plt.savefig(dwell_plot_path)
+        plt.close()
+
     def _map_duration_to_color(self, duration):
-        # Define colormap and normalization
-        cmap = plt.cm.viridis
-        # Adjust vmin and vmax as needed
-        norm = plt.Normalize(vmin=0, vmax=self.dwell_threshold)
-        # Map duration to color
-        color = cmap(norm(duration))
+        """
+        Map the dwell time duration to a color using the viridis colormap.
+
+        Parameters:
+        duration (float): The dwell time duration in seconds.
+
+        Returns:
+        tuple: An RGB color tuple.
+        """
+        # Normalize the duration to the range [0, 1]
+        norm = colors.Normalize(vmin=0, vmax=self.dwell_threshold)
+        # Use the viridis colormap to get the RGB color
+        color = plt.cm.viridis(norm(duration))
         return color
 
     def calibrate(self, screen_points):
